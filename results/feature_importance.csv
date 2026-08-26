@@ -1,0 +1,13 @@
+Feature,Importance
+numerical__traffic_1h_ago,0.8671650311893557
+numerical__hour,0.06337906110326598
+numerical__rolling_mean_3h,0.0196325596438544
+numerical__month,0.010662403897536277
+numerical__traffic_3h_ago,0.01023722550980386
+numerical__traffic_2h_ago,0.009347881346410134
+numerical__day_of_week,0.007835182848700105
+junction__Junction_3,0.004986077067285514
+junction__Junction_1,0.0027143567043854816
+numerical__is_weekend,0.0023129643551360398
+junction__Junction_2,0.0015124317927621164
+junction__Junction_4,0.00021482454150431238

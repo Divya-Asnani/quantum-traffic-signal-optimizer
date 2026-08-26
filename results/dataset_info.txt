@@ -1,0 +1,47 @@
+TRAFFIC DATASET INFORMATION
+============================
+
+Dataset:
+Traffic Prediction Dataset
+
+Source:
+Kaggle - fedesoriano
+
+Dataset URL:
+https://www.kaggle.com/datasets/fedesoriano/traffic-prediction-dataset
+
+Description:
+Hourly traffic data from four different junctions.
+
+Number of raw rows:
+48,120
+
+Columns:
+DateTime
+Junction
+Vehicles
+ID
+
+Prediction target:
+Traffic volume one hour ahead.
+
+Target column:
+target_vehicles
+
+Target definition:
+For each junction, the model predicts the number of vehicles
+expected in the next hour.
+
+Intersection representation:
+Junction 1, Junction 2, Junction 3 and Junction 4 are treated
+as four traffic demand streams for the proof-of-concept
+intersection.
+
+Source/license note:
+The Kaggle dataset page states that the source is confidential
+and that the dataset is for educational purposes. Kaggle lists
+the license as "Data files © Original Authors".
+
+Dataset suitability:
+The dataset is suitable for this proof-of-concept because it
+contains hourly vehicle counts and four junction identifiers.
