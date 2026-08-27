@@ -1,0 +1,10 @@
+
+numpy
+pandas
+scikit-learn
+qiskit
+qiskit-aer
+streamlit
+plotly
+matplotlib
+joblib
