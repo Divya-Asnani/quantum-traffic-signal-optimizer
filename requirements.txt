@@ -8,3 +8,5 @@ streamlit
 plotly
 matplotlib
 joblib
+qiskit-algorithms
+qiskit-optimization

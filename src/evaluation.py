@@ -106,15 +106,27 @@ def calculate_objective(traffic_demand, signal_timing):
         signal_timing
     )
 
+    congestion = calculate_congestion(
+        traffic_demand,
+        signal_timing
+    )
+
     total_queue = sum(queue_length.values())
     total_waiting = sum(waiting_time.values())
+    
+    if len(congestion) > 0:
+        average_congestion = sum(congestion.values()) / len(congestion)
+    else:
+        average_congestion = 0
 
-    # Weight given to queue length
+    # Unified weights
     queue_weight = 10
+    congestion_weight = 1
 
     objective = (
         total_waiting
-        + queue_weight * total_queue
+        + (queue_weight * total_queue)
+        + (congestion_weight * average_congestion)
     )
 
     return objective

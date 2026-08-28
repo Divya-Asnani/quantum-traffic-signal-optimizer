@@ -4,47 +4,8 @@ from src.evaluation import (
     calculate_queue_length,
     calculate_waiting_time,
     calculate_congestion,
+    calculate_objective,
 )
-
-
-def calculate_objective(traffic_demand, signal_timing):
-    """
-    Calculate the common objective used to evaluate
-    a signal-timing configuration.
-
-    Lower objective = better solution.
-    """
-
-    queue = calculate_queue_length(
-        traffic_demand,
-        signal_timing
-    )
-
-    waiting = calculate_waiting_time(
-        traffic_demand,
-        signal_timing
-    )
-
-    congestion = calculate_congestion(
-        traffic_demand,
-        signal_timing
-    )
-
-    total_queue = sum(queue.values())
-    total_waiting = sum(waiting.values())
-
-    average_congestion = (
-        sum(congestion.values())
-        / len(congestion)
-    )
-
-    objective = (
-        total_waiting
-        + total_queue
-        + average_congestion
-    )
-
-    return objective
 
 
 def optimize_signal_timing(
