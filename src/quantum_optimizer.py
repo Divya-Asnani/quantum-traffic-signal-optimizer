@@ -16,6 +16,11 @@ from qiskit_algorithms import QAOA
 from qiskit_algorithms.optimizers import COBYLA
 from qiskit_algorithms.utils import algorithm_globals
 from qiskit.primitives import StatevectorSampler
+import warnings
+from scipy.sparse import SparseEfficiencyWarning
+
+# Suppress harmless internal Qiskit sparse matrix warnings
+warnings.filterwarnings("ignore", category=SparseEfficiencyWarning)
 
 # ---------------------------------------------------------------------
 # PROBLEM DEFINITION & DECODING
@@ -61,7 +66,7 @@ def is_valid_timing(signal_timing):
 # QUBO MATRIX CONSTRUCTION
 # ---------------------------------------------------------------------
 
-def build_qubo(traffic_demand, penalty_weight=10000):
+def build_qubo(traffic_demand, penalty_weight=100000):
     """
     Builds the QUBO matrix and constant offset for the optimization problem.
     Energy = x^T Q x + offset

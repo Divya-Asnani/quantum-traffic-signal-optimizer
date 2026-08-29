@@ -119,9 +119,9 @@ def calculate_objective(traffic_demand, signal_timing):
     else:
         average_congestion = 0
 
-    # Unified weights
-    queue_weight = 10
-    congestion_weight = 1
+    # Unified interpretable weights
+    queue_weight = 60
+    congestion_weight = 50
 
     objective = (
         total_waiting

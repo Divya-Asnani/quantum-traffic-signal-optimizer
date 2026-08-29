@@ -14,6 +14,7 @@ def optimize_signal_timing(
     min_green=5,
     max_green=45,
     step=5,
+    allowed_green_times=None,
 ):
     """
     Classical exhaustive/grid-search optimizer.
@@ -36,11 +37,14 @@ def optimize_signal_timing(
     best_timing = None
     best_objective = float("inf")
 
-    possible_times = range(
-        min_green,
-        max_green + 1,
-        step
-    )
+    if allowed_green_times is not None:
+        possible_times = allowed_green_times
+    else:
+        possible_times = range(
+            min_green,
+            max_green + 1,
+            step
+        )
 
     # Generate every possible timing combination
     for timing_values in product(
