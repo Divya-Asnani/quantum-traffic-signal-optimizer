@@ -15,6 +15,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from run_backend import run_pipeline
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def cached_pipeline(demand_tuple):
+    demand = dict(demand_tuple)
+    return run_pipeline(custom_demand=demand)
+
+@st.cache_data(show_spinner=False)
+def cached_intersection_html(traffic_demand_tuple, signal_timing_tuple, mode):
+    """Cache intersection HTML rendering to avoid regenerating complex JS"""
+    traffic_demand = dict(traffic_demand_tuple)
+    signal_timing = dict(signal_timing_tuple) if signal_timing_tuple else None
+    return render_intersection(traffic_demand=traffic_demand, signal_timing=signal_timing, mode=mode)
+
 # --------------------------------------------------
 # Page configuration & Styling
 # --------------------------------------------------
@@ -147,7 +159,7 @@ st.markdown("""
         background-color: #F8FAFC;
         color: #334155;
         border: 1px solid #E2E8F0;
-        display: inline-block;
+        display: inline-block; 
         margin-top: 1rem;
         white-space: nowrap;
     }
@@ -314,11 +326,29 @@ with st.sidebar:
     if st.button("Run Optimization", type="primary", use_container_width=True):
         with st.spinner("Executing Optimization Pipeline..."):
             try:
-                st.session_state.optimization_results = run_pipeline(custom_demand=custom_demand)
+                # Create progress container
+                progress_container = st.container()
+                
+                if custom_demand is not None:
+                    demand_tuple = tuple(sorted(custom_demand.items()))
+                    with progress_container:
+                        with st.spinner("Computing optimal signal timing..."):
+                            st.session_state.optimization_results = cached_pipeline(
+                                demand_tuple
+                            )
+                else:
+                    with progress_container:
+                        with st.spinner("Computing optimal signal timing..."):
+                            st.session_state.optimization_results = run_pipeline(
+                                custom_demand=None
+                            )
+                
+                # Clear spinner on success
+                progress_container.empty()
+
             except Exception as e:
                 st.error(f"Execution Error: {str(e)}")
                 st.stop()
-
 
 # --------------------------------------------------
 # Main Content Area - Header
@@ -579,6 +609,8 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
                 let queues = {{ North: [], East: [], South: [], West: [] }};
                 let activeIndex = 0;
                 let isRunning = true;
+                let cycleCount = 0;
+                const maxCycles = 3; // Limit to 3 cycles for performance
                 
                 // Max visual demand reference for normalization
                 let maxDemand = 1;
@@ -589,8 +621,7 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
                 }}
                 
                 function spawnCar(dir) {{
-                    // Limit visual queue to 8 cars so they don't overflow the intersection visually
-                    if (queues[dir].length >= 8) return; 
+                    if (queues[dir].length >= 6) return; // Reduced from 8 to 6
                     
                     const el = document.createElement('div');
                     el.className = `vehicle veh-v veh-${{dir.charAt(0).toLowerCase()}}`;
@@ -598,7 +629,6 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
                         el.className = `vehicle veh-h veh-${{dir.charAt(0).toLowerCase()}}`;
                     }}
                     
-                    // Positioning logic
                     const i = queues[dir].length;
                     if (dir === "North") {{
                         el.style.top = (214 - 36 - 8 - (i * 44)) + "px";
@@ -614,27 +644,24 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
                     queues[dir].push(el);
                 }}
                 
-                // Real-time Arrival Loop
                 async function arrivalLoop() {{
-                    while (isRunning) {{
+                    while (isRunning && cycleCount < maxCycles) {{
                         for (let dir of directions) {{
-                            const rate = demand[dir] / maxDemand; // 0 to 1
-                            if (Math.random() < rate) {{
+                            const rate = demand[dir] / maxDemand;
+                            if (Math.random() < rate * 0.7) {{ // Reduced spawn rate
                                 spawnCar(dir);
                             }}
                         }}
-                        await sleep(1500); // 1500ms arrival ticks to match slower presentation scale
+                        await sleep(2000); // Increased from 1500ms for faster loop completion
                     }}
+                    isRunning = false;
                 }}
                 
-                // Stateful Signal Loop
                 async function runCycle() {{
-                    while(isRunning) {{
+                    while(isRunning && cycleCount < maxCycles) {{
                         const dir = directions[activeIndex];
-                        // 1s of optimized time = 300ms presentation time (slowed down for visibility)
-                        const durationMs = (timing[dir] || 15) * 300; 
+                        const durationMs = (timing[dir] || 15) * 200; // Reduced from 300ms to 200ms
                         
-                        // Set lights
                         directions.forEach(d => {{
                             const lightId = '.t-light-' + d.charAt(0).toLowerCase() + ' .t-light-indicator';
                             const light = document.querySelector(lightId);
@@ -649,57 +676,60 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
                             }}
                         }});
                         
-                        // Discharge loop during Green phase
                         const endTime = Date.now() + durationMs;
-                        while(Date.now() < endTime) {{
+                        let dischargeCount = 0;
+                        const maxDischarge = 4; // Reduced discharge per cycle
+                        
+                        while(Date.now() < endTime && dischargeCount < maxDischarge) {{
                             if (queues[dir].length > 0) {{
                                 const car = queues[dir].shift();
                                 
-                                // Move visually
                                 if (dir === "North") car.style.transform = "translateY(300px)";
                                 else if (dir === "South") car.style.transform = "translateY(-300px)";
                                 else if (dir === "East") car.style.transform = "translateX(-300px)";
                                 else if (dir === "West") car.style.transform = "translateX(300px)";
                                 
                                 car.style.opacity = "0";
-                                setTimeout(() => {{ if (car && car.parentNode) car.parentNode.removeChild(car); }}, 1500);
+                                setTimeout(() => {{ if (car && car.parentNode) car.parentNode.removeChild(car); }}, 1000);
+                                dischargeCount++;
                             }}
                             
-                            // Re-adjust remaining cars to move up
                             queues[dir].forEach((c, idx) => {{
-                                c.style.transition = 'top 0.2s, left 0.2s';
+                                c.style.transition = 'top 0.15s, left 0.15s';
                                 if (dir === "North") c.style.top = (214 - 36 - 8 - (idx * 44)) + "px";
                                 else if (dir === "South") c.style.top = (380 + 6 + 8 + (idx * 44)) + "px";
                                 else if (dir === "West") c.style.left = (214 - 36 - 8 - (idx * 44)) + "px";
                                 else if (dir === "East") c.style.left = (380 + 6 + 8 + (idx * 44)) + "px";
                             }});
                             
-                            await sleep(750); // discharge 1 vehicle every 750ms
+                            await sleep(500); // Reduced from 750ms
                         }}
                         
-                        // Extra sleep before switching lights if the green phase finished discharging queue
                         const remaining = endTime - Date.now();
                         if(remaining > 0) {{
                             await sleep(remaining);
                         }}
                         
                         activeIndex = (activeIndex + 1) % 4;
+                        if (activeIndex === 0) cycleCount++;
                     }}
+                    isRunning = false;
                 }}
                 
-                // Initialize queues with starting vehicles relative to demand
                 for (let dir of directions) {{
                     const rate = demand[dir] / maxDemand;
-                    // Seed initial queue proportional to demand
                     let initialCount = 0;
                     if (demand[dir] > 0) {{
-                        initialCount = Math.max(1, Math.floor(rate * 6));
+                        initialCount = Math.max(1, Math.floor(rate * 4)); // Reduced from 6 to 4
                     }}
                     for(let i=0; i<initialCount; i++) spawnCar(dir);
                 }}
                 
                 arrivalLoop();
                 runCycle();
+                
+                // Stop animation after timeout to free resources
+                setTimeout(() => {{ isRunning = false; }}, 35000);
             }})();
         </script>
         """
@@ -769,39 +799,78 @@ for i, d in enumerate(directions):
         </div>
         """, unsafe_allow_html=True)
 
-# --- Section 2: Intersection Visualization ---
+# --- Section 3: Optimization Results (Show FIRST for faster perceived load) ---
+st.markdown('<div class="section-title">2. Optimization Results</div>', unsafe_allow_html=True)
+
+o_cols = st.columns(4)
+overview_metrics = [
+    ("Default Baseline", default_timing, comparison["default"]["objective"]),
+    ("Full Classical", classical_full_timing, comparison["classical_full"]["objective"]),
+    ("Quantum-Compatible Classical", classical_restricted_timing, comparison["classical_restricted"]["objective"]),
+    ("QAOA", qaoa_timing if not qaoa_failed else None, comparison["quantum"]["objective"] if not qaoa_failed else None)
+]
+
+for i, (name, timing, obj) in enumerate(overview_metrics):
+    with o_cols[i]:
+        if timing is None:
+            st.markdown(f"""
+            <div class="data-card" style="border-top: 4px solid #EF4444; opacity: 0.7;">
+                <div class="sub-title" style="font-size: 1rem;">{name}</div>
+                <div style="color: #EF4444; font-weight: 600;">Execution Failed</div>
+            </div>
+            """, unsafe_allow_html=True)
+            continue
+            
+        color = "#94A3B8" if i == 0 else ("#3B82F6" if i == 1 else ("#14B8A6" if i == 2 else "#8B5CF6"))
+        st.markdown(f"""
+        <div class="data-card" style="border-top: 4px solid {color};">
+            <div class="sub-title" style="font-size: 1rem;">{name}</div>
+            <div style="margin-bottom: 1rem;">
+                <span class="metric-label">OBJECTIVE:</span>
+                <span style="font-size: 1.2rem; font-weight: 700;">{obj:.1f}</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem;">
+                <div><span class="meta-key">N:</span> {timing['North']}s</div>
+                <div><span class="meta-key">E:</span> {timing['East']}s</div>
+                <div><span class="meta-key">S:</span> {timing['South']}s</div>
+                <div><span class="meta-key">W:</span> {timing['West']}s</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 st.markdown('<div class="section-title">2. Intersection Visualization</div>', unsafe_allow_html=True)
 
-v_col1, v_col2 = st.columns([1, 1])
-with v_col1:
-    view_state = st.radio(
-        "Visualization State",
-        ["Before (Baseline)", "After (Optimized)"],
-        horizontal=True
-    )
-with v_col2:
-    if not qaoa_failed:
-        sol_opts = ["QAOA", "Full Classical", "Quantum-Compatible Classical"]
-    else:
-        sol_opts = ["Full Classical", "Quantum-Compatible Classical"]
-        
-    selected_solution = st.selectbox("Optimized Solution", sol_opts)
+with st.expander("📊 Show Animation", expanded=True):
+    v_col1, v_col2 = st.columns([1, 1])
+    with v_col1:
+        view_state = st.radio(
+            "Visualization State",
+            ["Before (Baseline)", "After (Optimized)"],
+            horizontal=True
+        )
+    with v_col2:
+        if not qaoa_failed:
+            sol_opts = ["QAOA", "Full Classical", "Quantum-Compatible Classical"]
+        else:
+            sol_opts = ["Full Classical", "Quantum-Compatible Classical"]
+            
+        selected_solution = st.selectbox("Optimized Solution", sol_opts)
 
-if view_state == "Before (Baseline)":
-    active_timing = default_timing
-else:
-    if selected_solution == "QAOA":
-        active_timing = qaoa_timing
-    elif selected_solution == "Full Classical":
-        active_timing = classical_full_timing
+    if view_state == "Before (Baseline)":
+        active_timing = default_timing
     else:
-        active_timing = classical_restricted_timing
+        if selected_solution == "QAOA":
+            active_timing = qaoa_timing
+        elif selected_solution == "Full Classical":
+            active_timing = classical_full_timing
+        else:
+            active_timing = classical_restricted_timing
 
-st.markdown("<br>", unsafe_allow_html=True)
-# Add a unique comment to force Streamlit to treat the HTML string as completely new, which forces a full DOM rebuild
-html_content = render_intersection(traffic_demand=traffic, signal_timing=active_timing, mode="populated")
-html_content += f"<!-- FORCE_RELOAD_KEY: {view_state}_{active_timing} -->"
-st.components.v1.html(html_content, height=720)
+    st.markdown("<br>", unsafe_allow_html=True)
+    # Use cached rendering for faster display
+    traffic_tuple = tuple(sorted(traffic.items()))
+    timing_tuple = tuple(sorted(active_timing.items()))
+    html_content = cached_intersection_html(traffic_tuple, timing_tuple, "populated")
+    st.components.v1.html(html_content, height=620)
 
 # --- Section 3: Optimization Results ---
 st.markdown('<div class="section-title">3. Optimization Results</div>', unsafe_allow_html=True)
@@ -844,87 +913,89 @@ for i, (name, timing, obj) in enumerate(overview_metrics):
 
 
 # --- Section 4: Performance Analysis ---
-st.markdown('<div class="section-title">4. Performance Analysis</div>', unsafe_allow_html=True)
-
-def format_delta(baseline, new_val):
-    diff = new_val - baseline
-    pct = (abs(diff) / baseline * 100) if baseline != 0 else 0
-    color = "#059669" if diff < 0 else ("#DC2626" if diff > 0 else "#64748B")
-    text = f"Improved by {pct:.1f}%" if diff < 0 else (f"Worsened by {pct:.1f}%" if diff > 0 else "0.0% change")
-    return f'<span style="color: {color}; font-weight:600;">{text}</span>'
-
-st.markdown('<div class="sub-title">Full Classical vs Default Baseline</div>', unsafe_allow_html=True)
-p_cols = st.columns(3)
-c_res = comparison["classical_full"]
-d_res = comparison["default"]
-
-with p_cols[0]:
-    st.markdown(f"""<div class="data-card"><div class="metric-label">Total Queue</div>
-    <div class="metric-value">{c_res['total_queue']:.0f}</div>
-    <div style="margin-top:0.5rem; font-size:0.9rem;">{format_delta(d_res['total_queue'], c_res['total_queue'])}</div></div>""", unsafe_allow_html=True)
+with st.expander("📈 Performance Analysis", expanded=False):
+    st.markdown('<div class="section-title" style="margin-top: 0;">Metrics & Comparisons</div>', unsafe_allow_html=True)
     
-with p_cols[1]:
-    st.markdown(f"""<div class="data-card"><div class="metric-label">Waiting Time</div>
-    <div class="metric-value">{c_res['total_waiting_time']:.0f}</div>
-    <div style="margin-top:0.5rem; font-size:0.9rem;">{format_delta(d_res['total_waiting_time'], c_res['total_waiting_time'])}</div></div>""", unsafe_allow_html=True)
-    
-with p_cols[2]:
-    st.markdown(f"""<div class="data-card"><div class="metric-label">Avg Congestion</div>
-    <div class="metric-value">{c_res['average_congestion']:.2f}</div>
-    <div style="margin-top:0.5rem; font-size:0.9rem;">{format_delta(d_res['average_congestion'], c_res['average_congestion'])}</div></div>""", unsafe_allow_html=True)
+    def format_delta(baseline, new_val):
+        diff = new_val - baseline
+        pct = (abs(diff) / baseline * 100) if baseline != 0 else 0
+        color = "#059669" if diff < 0 else ("#DC2626" if diff > 0 else "#64748B")
+        text = f"Improved by {pct:.1f}%" if diff < 0 else (f"Worsened by {pct:.1f}%" if diff > 0 else "0.0% change")
+        return f'<span style="color: {color}; font-weight:600;">{text}</span>'
 
-st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Full Classical vs Default Baseline</div>', unsafe_allow_html=True)
+    p_cols = st.columns(3)
+    c_res = comparison["classical_full"]
+    d_res = comparison["default"]
 
-analysis_data = [
-    {
-        "Algorithm": "Full Classical",
-        "Description": "Broader 5-second timing search space",
-        "Objective": c_res["objective"]
-    },
-    {
-        "Algorithm": "Quantum-Compatible Classical",
-        "Description": "Classical optimum within the QAOA representable space",
-        "Objective": comparison["classical_restricted"]["objective"]
-    }
-]
+    with p_cols[0]:
+        st.markdown(f"""<div class="data-card"><div class="metric-label">Total Queue</div>
+        <div class="metric-value">{c_res['total_queue']:.0f}</div>
+        <div style="margin-top:0.5rem; font-size:0.9rem;">{format_delta(d_res['total_queue'], c_res['total_queue'])}</div></div>""", unsafe_allow_html=True)
+        
+    with p_cols[1]:
+        st.markdown(f"""<div class="data-card"><div class="metric-label">Waiting Time</div>
+        <div class="metric-value">{c_res['total_waiting_time']:.0f}</div>
+        <div style="margin-top:0.5rem; font-size:0.9rem;">{format_delta(d_res['total_waiting_time'], c_res['total_waiting_time'])}</div></div>""", unsafe_allow_html=True)
+        
+    with p_cols[2]:
+        st.markdown(f"""<div class="data-card"><div class="metric-label">Avg Congestion</div>
+        <div class="metric-value">{c_res['average_congestion']:.2f}</div>
+        <div style="margin-top:0.5rem; font-size:0.9rem;">{format_delta(d_res['average_congestion'], c_res['average_congestion'])}</div></div>""", unsafe_allow_html=True)
 
-if not qaoa_failed:
-    analysis_data.append({
-        "Algorithm": "QAOA",
-        "Description": "Quantum optimization within the identical representable space",
-        "Objective": comparison["quantum"]["objective"]
-    })
+    st.markdown("<br>", unsafe_allow_html=True)
 
-analysis_df = pd.DataFrame(analysis_data)
-st.dataframe(
-    analysis_df,
-    column_config={
-        "Objective": st.column_config.NumberColumn("Objective Value", format="%.2f")
-    },
-    hide_index=True,
-    use_container_width=True
-)
+    analysis_data = [
+        {
+            "Algorithm": "Full Classical",
+            "Description": "Broader 5-second timing search space",
+            "Objective": c_res["objective"]
+        },
+        {
+            "Algorithm": "Quantum-Compatible Classical",
+            "Description": "Classical optimum within the QAOA representable space",
+            "Objective": comparison["classical_restricted"]["objective"]
+        }
+    ]
+
+    if not qaoa_failed:
+        analysis_data.append({
+            "Algorithm": "QAOA",
+            "Description": "Quantum optimization within the identical representable space",
+            "Objective": comparison["quantum"]["objective"]
+        })
+
+    analysis_df = pd.DataFrame(analysis_data)
+    st.dataframe(
+        analysis_df,
+        column_config={
+            "Objective": st.column_config.NumberColumn("Objective Value", format="%.2f")
+        },
+        hide_index=True,
+        use_container_width=True
+    )
 
 # --- Section 5: Quantum Details ---
-st.markdown('<div class="section-title">5. Quantum Details</div>', unsafe_allow_html=True)
-
-if qaoa_failed:
-    st.error(f"QAOA Execution Failed: {results['qaoa_metadata'].get('error', 'Unknown Error')}")
-else:
-    meta = results["qaoa_metadata"]
-    gap = comparison["qaoa_gap_vs_quantum_compatible"]
+with st.expander("⚛️ Quantum Optimization Details", expanded=False):
+    st.markdown('<div class="section-title" style="margin-top: 0;">QAOA Quantum Analysis</div>', unsafe_allow_html=True)
     
-    if gap <= 1e-6:
-        st.success("**Optimum Reached:** QAOA successfully located the true global optimum of the quantum-encodable space.")
+    if qaoa_failed:
+        st.error(f"QAOA Execution Failed: {results['qaoa_metadata'].get('error', 'Unknown Error')}")
     else:
-        st.info(f"**Local Minimum:** QAOA found a local minimum with a {gap:.2f} objective gap compared to the theoretical quantum-encodable optimum.")
+        meta = results["qaoa_metadata"]
+        gap = comparison["qaoa_gap_vs_quantum_compatible"]
+        
+        if gap <= 1e-6:
+            st.success("**Optimum Reached:** QAOA successfully located the true global optimum of the quantum-encodable space.")
+        else:
+            st.info(f"**Local Minimum:** QAOA found a local minimum with a {gap:.2f} objective gap compared to the theoretical quantum-encodable optimum.")
 
-    m_cols = st.columns(4)
-    with m_cols[0]:
-        st.markdown(f"<div class='data-card'><div class='metric-label'>Qubits</div><div class='metric-value' style='font-size:1.4rem;'>{meta.get('num_qubits', 8)}</div></div>", unsafe_allow_html=True)
-    with m_cols[1]:
-        st.markdown(f"<div class='data-card'><div class='metric-label'>Depth (Reps)</div><div class='metric-value' style='font-size:1.4rem;'>{meta.get('qaoa_reps', 1)}</div></div>", unsafe_allow_html=True)
-    with m_cols[2]:
-        st.markdown(f"<div class='data-card'><div class='metric-label'>QUBO Energy</div><div class='metric-value' style='font-size:1.4rem;'>{meta.get('qaoa_energy', 0):.2f}</div></div>", unsafe_allow_html=True)
-    with m_cols[3]:
-        st.markdown(f"<div class='data-card'><div class='metric-label'>Penalty</div><div class='metric-value' style='font-size:1.4rem;'>{meta.get('penalty_contribution', 0):.2f}</div></div>", unsafe_allow_html=True)
+        m_cols = st.columns(4)
+        with m_cols[0]:
+            st.markdown(f"<div class='data-card'><div class='metric-label'>Qubits</div><div class='metric-value' style='font-size:1.4rem;'>{meta.get('num_qubits', 8)}</div></div>", unsafe_allow_html=True)
+        with m_cols[1]:
+            st.markdown(f"<div class='data-card'><div class='metric-label'>Depth (Reps)</div><div class='metric-value' style='font-size:1.4rem;'>{meta.get('qaoa_reps', 1)}</div></div>", unsafe_allow_html=True)
+        with m_cols[2]:
+            st.markdown(f"<div class='data-card'><div class='metric-label'>QUBO Energy</div><div class='metric-value' style='font-size:1.4rem;'>{meta.get('qaoa_energy', 0):.2f}</div></div>", unsafe_allow_html=True)
+        with m_cols[3]:
+            st.markdown(f"<div class='data-card'><div class='metric-label'>Penalty</div><div class='metric-value' style='font-size:1.4rem;'>{meta.get('penalty_contribution', 0):.2f}</div></div>", unsafe_allow_html=True)
