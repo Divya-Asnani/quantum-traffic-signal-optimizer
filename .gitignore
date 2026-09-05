@@ -16,6 +16,7 @@ env/
 Thumbs.db
 
 src/.env
+models/*.joblib
 .venv/
 venv/
 app/.venv311/
