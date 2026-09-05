@@ -1,0 +1,19 @@
+<edges>
+
+    <!-- North ↔ Center -->
+    <edge id="north_center" from="north" to="center" numLanes="1" speed="13.89"/>
+    <edge id="center_north" from="center" to="north" numLanes="1" speed="13.89"/>
+
+    <!-- South ↔ Center -->
+    <edge id="south_center" from="south" to="center" numLanes="1" speed="13.89"/>
+    <edge id="center_south" from="center" to="south" numLanes="1" speed="13.89"/>
+
+    <!-- West ↔ Center -->
+    <edge id="west_center" from="west" to="center" numLanes="1" speed="13.89"/>
+    <edge id="center_west" from="center" to="west" numLanes="1" speed="13.89"/>
+
+    <!-- East ↔ Center -->
+    <edge id="east_center" from="east" to="center" numLanes="1" speed="13.89"/>
+    <edge id="center_east" from="center" to="east" numLanes="1" speed="13.89"/>
+
+</edges>

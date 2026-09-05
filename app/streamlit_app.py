@@ -13,7 +13,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from run_backend import run_pipeline
+from run_backend import (
+    run_pipeline,
+    prepare_pipeline,
+    submit_ibm_pipeline,
+    retrieve_ibm_pipeline,
+)
+from src.ibm_quantum_optimizer import (
+    get_qaoa_job_status,
+    submit_qaoa_job_ibm,
+)
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def cached_pipeline(demand_tuple):
@@ -269,6 +278,22 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ============================================================
+# IBM QUANTUM ASYNC SESSION STATE
+# ============================================================
+
+if "ibm_job_id" not in st.session_state:
+    st.session_state.ibm_job_id = None
+
+if "ibm_job_status" not in st.session_state:
+    st.session_state.ibm_job_status = None
+
+if "ibm_prepared_results" not in st.session_state:
+    st.session_state.ibm_prepared_results = None
+
+if "optimization_results" not in st.session_state:
+    st.session_state.optimization_results = None
+
 # --------------------------------------------------
 # Cache Invalidation Helpers
 # --------------------------------------------------
@@ -323,34 +348,229 @@ with st.sidebar:
         st.info("Live Random Forest ML predictions on the historical dataset will be executed.")
 
     st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
-    if st.button("Run Optimization", type="primary", use_container_width=True):
-        with st.spinner("Executing Optimization Pipeline..."):
-            try:
-                # Create progress container
-                progress_container = st.container()
-                
-                if custom_demand is not None:
-                    demand_tuple = tuple(sorted(custom_demand.items()))
-                    with progress_container:
-                        with st.spinner("Computing optimal signal timing..."):
-                            st.session_state.optimization_results = cached_pipeline(
-                                demand_tuple
-                            )
-                else:
-                    with progress_container:
-                        with st.spinner("Computing optimal signal timing..."):
-                            st.session_state.optimization_results = run_pipeline(
-                                custom_demand=None
-                            )
-                
-                # Clear spinner on success
-                progress_container.empty()
+    # ============================================================
+# RUN OPTIMIZATION
+# ============================================================
 
-            except Exception as e:
-                st.error(f"Execution Error: {str(e)}")
-                st.stop()
+if st.button("Run Optimization", type="primary", use_container_width=True):
+    try:
+        # ========================================================
+        # STEP 1: GET USER TRAFFIC DEMAND
+        # ========================================================
 
-# --------------------------------------------------
+        if custom_demand is None:
+            st.error(
+                "Please select a traffic scenario or enter custom traffic demand."
+            )
+            st.stop()
+
+        traffic_demand = {
+            "North": float(custom_demand["North"]),
+            "East": float(custom_demand["East"]),
+            "South": float(custom_demand["South"]),
+            "West": float(custom_demand["West"])
+        }
+
+        total_demand = sum(traffic_demand.values())
+
+        if total_demand <= 0:
+            st.error("Traffic demand must contain at least one vehicle.")
+            st.stop()
+
+        # ========================================================
+        # STEP 2: PREPARE BACKEND
+        # ========================================================
+
+        with st.spinner("Calculating classical optimization..."):
+
+            prepared_results = prepare_pipeline(
+                custom_demand=traffic_demand
+            )
+
+        # ========================================================
+        # STEP 3: SUBMIT QAOA TO IBM QUANTUM
+        # ========================================================
+
+        with st.spinner("Submitting QAOA to IBM Quantum..."):
+
+            job_id, ibm_metadata = submit_qaoa_job_ibm(
+                prepared_results["traffic_demand"],
+                shots=512,
+                reps=1
+            )
+
+        # ========================================================
+        # STEP 4: SAVE CURRENT OPTIMIZATION
+        # ========================================================
+
+        prepared_results["ibm_job_id"] = job_id
+        prepared_results["qaoa_metadata"] = ibm_metadata
+        prepared_results["qaoa_status"] = "QUEUED"
+
+        st.session_state.user_traffic_demand = traffic_demand
+
+        st.session_state.ibm_prepared_results = prepared_results
+
+        st.session_state.ibm_job_id = job_id
+        st.session_state.ibm_job_status = "QUEUED"
+
+        # Remove previous completed results
+        st.session_state.optimization_results = None
+
+        # ========================================================
+        # STEP 5: DISPLAY INPUT SENT TO BACKEND
+        # ========================================================
+
+        st.success(
+            "Traffic optimization prepared successfully."
+        )
+
+        st.info(
+            f"""
+**Traffic Demand Sent to Backend**
+
+North: {traffic_demand["North"]:.0f} vehicles  
+East: {traffic_demand["East"]:.0f} vehicles  
+South: {traffic_demand["South"]:.0f} vehicles  
+West: {traffic_demand["West"]:.0f} vehicles  
+
+**Total Demand:** {total_demand:.0f} vehicles
+"""
+        )
+
+        st.success(
+            f"QAOA submitted successfully to IBM Quantum. "
+            f"Job ID: `{job_id}`"
+        )
+
+        st.info(
+            "The QAOA calculation is running asynchronously. "
+            "Classical optimization has already been calculated."
+        )
+
+    except Exception as e:
+        st.error(
+            f"Optimization failed: {str(e)}"
+        )
+
+
+# ============================================================
+# IBM QUANTUM JOB STATUS
+# ============================================================
+
+if st.session_state.get("ibm_job_id"):
+
+    st.markdown("### IBM Quantum Hardware")
+
+    job_id = st.session_state.ibm_job_id
+
+    st.write(f"**Job ID:** `{job_id}`")
+
+    if st.button(
+        "Check IBM Quantum Job Status",
+        use_container_width=True
+    ):
+
+        try:
+
+            current_status = get_qaoa_job_status(job_id)
+
+            st.session_state.ibm_job_status = current_status
+
+            # ====================================================
+            # JOB COMPLETED
+            # ====================================================
+
+            if current_status == "DONE":
+
+                prepared_results = (
+                    st.session_state.ibm_prepared_results
+                )
+
+                with st.spinner(
+                    "Retrieving QAOA result..."
+                ):
+
+                    final_results = retrieve_ibm_pipeline(
+                        job_id=job_id,
+                        traffic_demand=(
+                            prepared_results["traffic_demand"]
+                        ),
+                        prepared_results=prepared_results
+                    )
+
+                # Save final comparison results
+                st.session_state.optimization_results = (
+                    final_results
+                )
+
+                st.success(
+                    "IBM Quantum optimization completed successfully."
+                )
+
+                st.rerun()
+
+            # ====================================================
+            # JOB STILL RUNNING
+            # ====================================================
+
+            elif current_status in [
+                "QUEUED",
+                "RUNNING",
+                "INITIALIZING",
+                "VALIDATING"
+            ]:
+
+                st.info(
+                    f"IBM Quantum job status: **{current_status}**"
+                )
+
+            # ====================================================
+            # JOB FAILED
+            # ====================================================
+
+            elif current_status in [
+                "CANCELLED",
+                "ERROR",
+                "FAILED"
+            ]:
+
+                st.error(
+                    f"IBM Quantum job finished with status: "
+                    f"**{current_status}**"
+                )
+
+            # ====================================================
+            # OTHER STATUS
+            # ====================================================
+
+            else:
+
+                st.warning(
+                    f"IBM Quantum job status: "
+                    f"**{current_status}**"
+                )
+
+        except Exception as e:
+
+            st.error(
+                f"Unable to retrieve IBM Quantum status: {str(e)}"
+            )
+
+    # ============================================================
+    # CURRENT STATUS
+    # ============================================================
+
+    current_status = st.session_state.get(
+        "ibm_job_status"
+    )
+
+    if current_status:
+
+        st.caption(
+            f"Current IBM Quantum status: {current_status}"
+        )
+#------------------------------------
 # Main Content Area - Header
 # --------------------------------------------------
 
@@ -501,6 +721,7 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
         .t-light-w { left: 185px; top: 391px; }
         .light-green { background-color: #22C55E !important; box-shadow: 0 0 8px #22C55E; }
         .light-red { background-color: #EF4444 !important; }
+        .light-yellow { background-color: #FBBF24 !important; box-shadow: 0 0 8px #FBBF24; }
         
         /* Vehicles */
         .vehicle {
@@ -510,7 +731,10 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
             border: 2px solid #0284C7;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
             z-index: 5;
-            transition: transform 1.5s linear, opacity 1s ease-in;
+            transition:
+        top 3s linear,
+        left 3s linear,
+        opacity 0.5s linear;
         }
         .vehicle::after {
             /* Minimal window accent */
@@ -564,13 +788,17 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
                 <div class="stop-line-w"></div>
                 
                 <!-- Traffic Lights -->
-                <div class="t-light-box t-light-n"><div class="t-light-indicator"></div></div>
-                <div class="t-light-box t-light-s"><div class="t-light-indicator"></div></div>
-                <div class="t-light-box t-light-e"><div class="t-light-indicator"></div></div>
-                <div class="t-light-box t-light-w"><div class="t-light-indicator"></div></div>
+                <div class="t-light-box t-light-n"><div class="t-light-indicator light-yellow"></div></div>
+                <div class="t-light-box t-light-s"><div class="t-light-indicator light-yellow"></div></div>
+                <div class="t-light-box t-light-e"><div class="t-light-indicator light-yellow"></div></div>
+                <div class="t-light-box t-light-w"><div class="t-light-indicator light-yellow"></div></div>
     """
     
-    # Vehicles are now generated dynamically in JS
+    if mode == "neutral":
+        html_str += """
+                <div class="vehicle veh-v veh-n" style="top:170px;"></div>
+                <div class="vehicle veh-v veh-s" style="top:394px;"></div>
+            """
     
     # Render Labels
     for d, d_cls in [("North", "label-n"), ("South", "label-s"), ("East", "label-e"), ("West", "label-w")]:
@@ -600,139 +828,335 @@ def render_intersection(traffic_demand=None, signal_timing=None, mode="neutral")
             Visualization represents relative traffic flow under the selected signal allocation.
         </div>
         <script>
-            (function() {{
-                const timing = {timing_json};
-                const demand = {json.dumps(traffic_demand)};
-                const directions = ["North", "East", "South", "West"];
-                const wrapper = document.querySelector('.intersection-wrapper');
-                
-                let queues = {{ North: [], East: [], South: [], West: [] }};
-                let activeIndex = 0;
-                let isRunning = true;
-                let cycleCount = 0;
-                const maxCycles = 3; // Limit to 3 cycles for performance
-                
-                // Max visual demand reference for normalization
-                let maxDemand = 1;
-                for (let k in demand) {{ if(demand[k] > maxDemand) maxDemand = demand[k]; }}
-                
-                async function sleep(ms) {{
-                    return new Promise(resolve => setTimeout(resolve, ms));
-                }}
-                
-                function spawnCar(dir) {{
-                    if (queues[dir].length >= 6) return; // Reduced from 8 to 6
-                    
-                    const el = document.createElement('div');
-                    el.className = `vehicle veh-v veh-${{dir.charAt(0).toLowerCase()}}`;
-                    if (dir === 'East' || dir === 'West') {{
-                        el.className = `vehicle veh-h veh-${{dir.charAt(0).toLowerCase()}}`;
+(function() {{
+
+    const timing = {timing_json};
+    const demand = {json.dumps(traffic_demand)};
+
+    const directions = ["North", "East", "South", "West"];
+
+    const wrapper = document.querySelector('.intersection-wrapper');
+
+    if (!wrapper) {{
+        console.log("Intersection wrapper not found");
+        return;
+    }}
+
+    let running = true;
+    let activeIndex = 0;
+    let cycleCount = 0;
+
+    const maxCycles = 6;
+
+    /*
+     * Convert QAOA timing into visual time.
+     *
+     * Example:
+     * North = 10 sec -> 3 sec visual green
+     * South = 20 sec -> 6 sec visual green
+     */
+    function getGreenDuration(dir) {{
+        return Math.max(2500, (timing[dir] || 10) * 300);
+    }}
+
+    /*
+     * Convert traffic demand into vehicle arrival frequency.
+     */
+    let maxDemand = Math.max(
+        demand.North || 0,
+        demand.East || 0,
+        demand.South || 0,
+        demand.West || 0,
+        1
+    );
+
+    function sleep(ms) {{
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }}
+
+    /*
+     * Create one vehicle.
+     */
+    function createVehicle(dir) {{
+
+        const car = document.createElement("div");
+
+        if (dir === "North" || dir === "South") {{
+            car.className = "vehicle veh-v";
+        }} else {{
+            car.className = "vehicle veh-h";
+        }}
+
+        /*
+         * Starting positions.
+         */
+        if (dir === "North") {{
+            car.style.left = "246px";
+            car.style.top = "-50px";
+        }}
+
+        else if (dir === "South") {{
+            car.style.left = "330px";
+            car.style.top = "520px";
+        }}
+
+        else if (dir === "West") {{
+            car.style.left = "-50px";
+            car.style.top = "326px";
+        }}
+
+        else if (dir === "East") {{
+            car.style.left = "520px";
+            car.style.top = "246px";
+        }}
+
+        wrapper.appendChild(car);
+
+        return car;
+    }}
+
+    /*
+     * Move vehicle through intersection.
+     */
+    function moveVehicle(car, dir) {{
+
+        /*
+         * Force browser to render starting position first.
+         */
+        car.getBoundingClientRect();
+
+        /*
+         * Smooth movement.
+         */
+        car.style.transition =
+            "top 3s linear, left 3s linear, opacity 0.5s linear";
+
+        if (dir === "North") {{
+            car.style.top = "520px";
+        }}
+
+        else if (dir === "South") {{
+            car.style.top = "-50px";
+        }}
+
+        else if (dir === "West") {{
+            car.style.left = "520px";
+        }}
+
+        else if (dir === "East") {{
+            car.style.left = "-50px";
+        }}
+
+        /*
+         * Remove vehicle after crossing.
+         */
+        setTimeout(() => {{
+            if (car.parentNode) {{
+                car.style.opacity = "0";
+
+                setTimeout(() => {{
+                    if (car.parentNode) {{
+                        car.parentNode.removeChild(car);
                     }}
-                    
-                    const i = queues[dir].length;
-                    if (dir === "North") {{
-                        el.style.top = (214 - 36 - 8 - (i * 44)) + "px";
-                    }} else if (dir === "South") {{
-                        el.style.top = (380 + 6 + 8 + (i * 44)) + "px";
-                    }} else if (dir === "West") {{
-                        el.style.left = (214 - 36 - 8 - (i * 44)) + "px";
-                    }} else if (dir === "East") {{
-                        el.style.left = (380 + 6 + 8 + (i * 44)) + "px";
-                    }}
-                    
-                    wrapper.appendChild(el);
-                    queues[dir].push(el);
+                }}, 500);
+            }}
+        }}, 3000);
+    }}
+
+    /*
+     * Set traffic lights.
+     */
+    function setLights(activeDir) {{
+
+        directions.forEach(dir => {{
+
+            const selector =
+                ".t-light-" +
+                dir.charAt(0).toLowerCase() +
+                " .t-light-indicator";
+
+            const light = document.querySelector(selector);
+
+            if (!light) return;
+
+            light.classList.remove(
+                "light-green",
+                "light-red",
+                "light-yellow"
+            );
+
+            if (dir === activeDir) {{
+                light.classList.add("light-green");
+            }} else {{
+                light.classList.add("light-red");
+            }}
+        }});
+    }}
+
+    /*
+     * Generate vehicles based on traffic demand.
+     */
+    async function vehicleArrivalLoop() {{
+
+        while (running) {{
+
+            for (const dir of directions) {{
+
+                const dirDemand = demand[dir] || 0;
+
+                const probability =
+                    (dirDemand / maxDemand) * 0.65;
+
+                if (Math.random() < probability) {{
+
+                    /*
+                     * Only create vehicles for visualization.
+                     */
+                    const car = createVehicle(dir);
+
+                    /*
+                     * Small delay guarantees the browser
+                     * paints the initial position.
+                     */
+                    await sleep(100);
+
+                    moveVehicle(car, dir);
                 }}
-                
-                async function arrivalLoop() {{
-                    while (isRunning && cycleCount < maxCycles) {{
-                        for (let dir of directions) {{
-                            const rate = demand[dir] / maxDemand;
-                            if (Math.random() < rate * 0.7) {{ // Reduced spawn rate
-                                spawnCar(dir);
-                            }}
-                        }}
-                        await sleep(2000); // Increased from 1500ms for faster loop completion
-                    }}
-                    isRunning = false;
+            }}
+
+            await sleep(1400);
+        }}
+    }}
+
+    /*
+     * Traffic signal cycle.
+     */
+    async function signalCycle() {{
+
+        while (running && cycleCount < maxCycles) {{
+
+            const dir = directions[activeIndex];
+
+            /*
+             * Green light is controlled by
+             * the actual QAOA timing.
+             */
+            const greenDuration =
+                getGreenDuration(dir);
+
+            console.log(
+                "GREEN:",
+                dir,
+                "QAOA timing:",
+                timing[dir],
+                "seconds"
+            );
+
+            setLights(dir);
+
+            /*
+             * During green signal, vehicles
+             * continue moving.
+             */
+            await sleep(greenDuration);
+
+            /*
+             * Yellow transition.
+             */
+            const lightSelector =
+                ".t-light-" +
+                dir.charAt(0).toLowerCase() +
+                " .t-light-indicator";
+
+            const activeLight =
+                document.querySelector(lightSelector);
+
+            if (activeLight) {{
+                activeLight.classList.remove("light-green");
+                activeLight.classList.add("light-yellow");
+            }}
+
+            await sleep(500);
+
+            /*
+             * Next direction.
+             */
+            activeIndex =
+                (activeIndex + 1) % directions.length;
+
+            if (activeIndex === 0) {{
+                cycleCount++;
+
+                console.log(
+                    "Completed traffic cycle:",
+                    cycleCount
+                );
+            }}
+        }}
+
+        running = false;
+
+        /*
+         * Reset lights.
+         */
+        directions.forEach(dir => {{
+
+            const selector =
+                ".t-light-" +
+                dir.charAt(0).toLowerCase() +
+                " .t-light-indicator";
+
+            const light =
+                document.querySelector(selector);
+
+            if (light) {{
+                light.classList.remove(
+                    "light-green",
+                    "light-red"
+                );
+
+                light.classList.add("light-yellow");
+            }}
+        }});
+    }}
+
+    /*
+     * Initial vehicles.
+     *
+     * Higher traffic demand = more vehicles.
+     */
+    directions.forEach(dir => {{
+
+        const rate =
+            (demand[dir] || 0) / maxDemand;
+
+        const count =
+            Math.max(2, Math.floor(rate * 5));
+
+        for (let i = 0; i < count; i++) {{
+
+            const car = createVehicle(dir);
+
+            /*
+             * Stagger initial vehicles.
+             */
+            setTimeout(() => {{
+                if (running) {{
+                    moveVehicle(car, dir);
                 }}
-                
-                async function runCycle() {{
-                    while(isRunning && cycleCount < maxCycles) {{
-                        const dir = directions[activeIndex];
-                        const durationMs = (timing[dir] || 15) * 200; // Reduced from 300ms to 200ms
-                        
-                        directions.forEach(d => {{
-                            const lightId = '.t-light-' + d.charAt(0).toLowerCase() + ' .t-light-indicator';
-                            const light = document.querySelector(lightId);
-                            if (light) {{
-                                if (d === dir) {{
-                                    light.classList.add('light-green');
-                                    light.classList.remove('light-red');
-                                }} else {{
-                                    light.classList.add('light-red');
-                                    light.classList.remove('light-green');
-                                }}
-                            }}
-                        }});
-                        
-                        const endTime = Date.now() + durationMs;
-                        let dischargeCount = 0;
-                        const maxDischarge = 4; // Reduced discharge per cycle
-                        
-                        while(Date.now() < endTime && dischargeCount < maxDischarge) {{
-                            if (queues[dir].length > 0) {{
-                                const car = queues[dir].shift();
-                                
-                                if (dir === "North") car.style.transform = "translateY(300px)";
-                                else if (dir === "South") car.style.transform = "translateY(-300px)";
-                                else if (dir === "East") car.style.transform = "translateX(-300px)";
-                                else if (dir === "West") car.style.transform = "translateX(300px)";
-                                
-                                car.style.opacity = "0";
-                                setTimeout(() => {{ if (car && car.parentNode) car.parentNode.removeChild(car); }}, 1000);
-                                dischargeCount++;
-                            }}
-                            
-                            queues[dir].forEach((c, idx) => {{
-                                c.style.transition = 'top 0.15s, left 0.15s';
-                                if (dir === "North") c.style.top = (214 - 36 - 8 - (idx * 44)) + "px";
-                                else if (dir === "South") c.style.top = (380 + 6 + 8 + (idx * 44)) + "px";
-                                else if (dir === "West") c.style.left = (214 - 36 - 8 - (idx * 44)) + "px";
-                                else if (dir === "East") c.style.left = (380 + 6 + 8 + (idx * 44)) + "px";
-                            }});
-                            
-                            await sleep(500); // Reduced from 750ms
-                        }}
-                        
-                        const remaining = endTime - Date.now();
-                        if(remaining > 0) {{
-                            await sleep(remaining);
-                        }}
-                        
-                        activeIndex = (activeIndex + 1) % 4;
-                        if (activeIndex === 0) cycleCount++;
-                    }}
-                    isRunning = false;
-                }}
-                
-                for (let dir of directions) {{
-                    const rate = demand[dir] / maxDemand;
-                    let initialCount = 0;
-                    if (demand[dir] > 0) {{
-                        initialCount = Math.max(1, Math.floor(rate * 4)); // Reduced from 6 to 4
-                    }}
-                    for(let i=0; i<initialCount; i++) spawnCar(dir);
-                }}
-                
-                arrivalLoop();
-                runCycle();
-                
-                // Stop animation after timeout to free resources
-                setTimeout(() => {{ isRunning = false; }}, 35000);
-            }})();
-        </script>
-        """
+            }}, i * 800);
+        }}
+    }});
+
+    /*
+     * Start simulation.
+     */
+    vehicleArrivalLoop();
+    signalCycle();
+
+}})();
+</script>
+ """
         
     return html_str
 
@@ -807,7 +1231,7 @@ overview_metrics = [
     ("Default Baseline", default_timing, comparison["default"]["objective"]),
     ("Full Classical", classical_full_timing, comparison["classical_full"]["objective"]),
     ("Quantum-Compatible Classical", classical_restricted_timing, comparison["classical_restricted"]["objective"]),
-    ("QAOA", qaoa_timing if not qaoa_failed else None, comparison["quantum"]["objective"] if not qaoa_failed else None)
+    ("QAOA", qaoa_timing if not qaoa_failed else None, comparison["qaoa"]["objective"] if not qaoa_failed else None)
 ]
 
 for i, (name, timing, obj) in enumerate(overview_metrics):
@@ -867,10 +1291,26 @@ with st.expander("📊 Show Animation", expanded=True):
 
     st.markdown("<br>", unsafe_allow_html=True)
     # Use cached rendering for faster display
-    traffic_tuple = tuple(sorted(traffic.items()))
-    timing_tuple = tuple(sorted(active_timing.items()))
-    html_content = cached_intersection_html(traffic_tuple, timing_tuple, "populated")
-    st.components.v1.html(html_content, height=620)
+    html_content = render_intersection(
+    traffic_demand=traffic,
+    signal_timing=active_timing,
+    mode="populated"
+)
+
+import base64
+
+html_b64 = base64.b64encode(
+    html_content.encode("utf-8")
+).decode("utf-8")
+
+iframe_html = f"""
+<iframe
+    src="data:text/html;base64,{html_b64}"
+    width="100%"
+    height="720"
+    style="border:none;"
+></iframe>
+"""
 
 # --- Section 3: Optimization Results ---
 st.markdown('<div class="section-title">3. Optimization Results</div>', unsafe_allow_html=True)
@@ -880,7 +1320,7 @@ overview_metrics = [
     ("Default Baseline", default_timing, comparison["default"]["objective"]),
     ("Full Classical", classical_full_timing, comparison["classical_full"]["objective"]),
     ("Quantum-Compatible Classical", classical_restricted_timing, comparison["classical_restricted"]["objective"]),
-    ("QAOA", qaoa_timing if not qaoa_failed else None, comparison["quantum"]["objective"] if not qaoa_failed else None)
+    ("QAOA", qaoa_timing if not qaoa_failed else None, comparison["qaoa"]["objective"] if not qaoa_failed else None)
 ]
 
 for i, (name, timing, obj) in enumerate(overview_metrics):
@@ -962,7 +1402,7 @@ with st.expander("📈 Performance Analysis", expanded=False):
         analysis_data.append({
             "Algorithm": "QAOA",
             "Description": "Quantum optimization within the identical representable space",
-            "Objective": comparison["quantum"]["objective"]
+            "Objective": comparison["qaoa"]["objective"]
         })
 
     analysis_df = pd.DataFrame(analysis_data)

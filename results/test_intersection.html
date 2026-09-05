@@ -1,0 +1,355 @@
+
+    <style>
+        .intersection-outer {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            overflow: hidden;
+            margin-bottom: 2rem;
+            background-color: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        .intersection-scaler {
+            transform-origin: top center;
+            width: 600px;
+            height: 600px;
+        }
+        @media (max-width: 800px) {
+            .intersection-scaler { transform: scale(0.8); height: 480px; }
+        }
+        @media (max-width: 600px) {
+            .intersection-scaler { transform: scale(0.6); height: 360px; }
+        }
+        @media (max-width: 400px) {
+            .intersection-scaler { transform: scale(0.45); height: 270px; }
+        }
+        .intersection-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 600px;
+            margin: 0 auto;
+            background-color: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        /* Roads */
+        .road-vertical {
+            position: absolute;
+            top: 0; bottom: 0;
+            left: 220px; right: 220px;
+            background-color: #334155;
+        }
+        .road-horizontal {
+            position: absolute;
+            left: 0; right: 0;
+            top: 220px; bottom: 220px;
+            background-color: #334155;
+        }
+        .center-box {
+            position: absolute;
+            left: 220px; top: 220px;
+            width: 160px; height: 160px;
+            background-color: #1E293B;
+        }
+        
+        /* Lane Markings */
+        .lane-divider-v {
+            position: absolute;
+            left: 298px; top: 0; bottom: 0;
+            width: 4px;
+            background-image: linear-gradient(to bottom, transparent 50%, #FBBF24 50%);
+            background-size: 100% 40px;
+        }
+        .lane-divider-h {
+            position: absolute;
+            top: 298px; left: 0; right: 0;
+            height: 4px;
+            background-image: linear-gradient(to right, transparent 50%, #FBBF24 50%);
+            background-size: 40px 100%;
+        }
+        
+        /* Stop Lines */
+        .stop-line-n { position: absolute; left: 220px; top: 214px; width: 78px; height: 6px; background: white; }
+        .stop-line-s { position: absolute; left: 302px; top: 380px; width: 78px; height: 6px; background: white; }
+        .stop-line-e { position: absolute; left: 380px; top: 220px; width: 6px; height: 78px; background: white; }
+        .stop-line-w { position: absolute; left: 214px; top: 302px; width: 6px; height: 78px; background: white; }
+
+        /* Labels */
+        .dir-label {
+            position: absolute;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: #334155;
+            background: rgba(255,255,255,0.95);
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #CBD5E1;
+            z-index: 20;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .label-n { top: 20px; left: 120px; }
+        .label-s { bottom: 20px; right: 120px; }
+        .label-e { right: 20px; top: 120px; }
+        .label-w { left: 20px; bottom: 120px; }
+        .demand-sub { font-size: 0.75rem; font-weight: 400; color: #64748B; margin-top:2px; }
+
+        /* Traffic Lights */
+        .t-light-box {
+            position: absolute;
+            width: 24px; height: 24px;
+            background-color: #1E293B;
+            border-radius: 4px;
+            border: 2px solid #475569;
+            z-index: 10;
+        }
+        .t-light-indicator {
+            width: 14px; height: 14px;
+            background-color: #64748B; /* Neutral */
+            border-radius: 50%;
+            margin: 3px auto;
+        }
+        .t-light-n { left: 185px; top: 185px; }
+        .t-light-s { left: 391px; top: 391px; }
+        .t-light-e { left: 391px; top: 185px; }
+        .t-light-w { left: 185px; top: 391px; }
+        .light-green { background-color: #22C55E !important; box-shadow: 0 0 8px #22C55E; }
+        .light-red { background-color: #EF4444 !important; }
+        .light-yellow { background-color: #FBBF24 !important; box-shadow: 0 0 8px #FBBF24; }
+        
+        /* Vehicles */
+        .vehicle {
+            position: absolute;
+            background-color: #38BDF8;
+            border-radius: 3px;
+            border: 2px solid #0284C7;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            z-index: 5;
+            transition: transform 1.5s linear, opacity 1s ease-in;
+        }
+        .vehicle::after {
+            /* Minimal window accent */
+            content: '';
+            position: absolute;
+            background: #0284C7;
+        }
+        /* Vertical Cars */
+        .veh-v { width: 24px; height: 36px; }
+        .veh-v::after { left: 2px; right: 2px; height: 6px; }
+        .veh-n { left: 246px; }
+        .veh-n::after { bottom: 6px; } /* Front window facing down */
+        .veh-s { left: 330px; }
+        .veh-s::after { top: 6px; } /* Front window facing up */
+        
+        /* Horizontal Cars */
+        .veh-h { width: 36px; height: 24px; }
+        .veh-h::after { top: 2px; bottom: 2px; width: 6px; }
+        .veh-w { top: 326px; }
+        .veh-w::after { right: 6px; } /* Front window facing right */
+        .veh-e { top: 246px; }
+        .veh-e::after { left: 6px; } /* Front window facing left */
+        
+        .neutral-overlay {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 20px 30px;
+            border-radius: 8px;
+            border: 1px solid #CBD5E1;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+    </style>
+    <div class="intersection-outer">
+        <div class="intersection-scaler">
+            <div class="intersection-wrapper">
+                <!-- Roads -->
+                <div class="road-vertical"></div>
+                <div class="road-horizontal"></div>
+                <div class="center-box"></div>
+                
+                <!-- Lane Markings -->
+                <div class="lane-divider-v"></div>
+                <div class="lane-divider-h"></div>
+                <div class="stop-line-n"></div>
+                <div class="stop-line-s"></div>
+                <div class="stop-line-e"></div>
+                <div class="stop-line-w"></div>
+                
+                <!-- Traffic Lights -->
+                <div class="t-light-box t-light-n"><div class="t-light-indicator light-yellow"></div></div>
+                <div class="t-light-box t-light-s"><div class="t-light-indicator light-yellow"></div></div>
+                <div class="t-light-box t-light-e"><div class="t-light-indicator light-yellow"></div></div>
+                <div class="t-light-box t-light-w"><div class="t-light-indicator light-yellow"></div></div>
+    
+        <div class="dir-label label-n">
+            North
+            <div class="demand-sub">70.8 veh/h</div>
+        </div>
+        
+        <div class="dir-label label-s">
+            South
+            <div class="demand-sub">28.6 veh/h</div>
+        </div>
+        
+        <div class="dir-label label-e">
+            East
+            <div class="demand-sub">30.2 veh/h</div>
+        </div>
+        
+        <div class="dir-label label-w">
+            West
+            <div class="demand-sub">20.6 veh/h</div>
+        </div>
+        </div></div></div>
+        <div style="text-align:center; font-size:0.8rem; color:#94A3B8; margin-top:10px;">
+            Visualization represents relative traffic flow under the selected signal allocation.
+        </div>
+        <script>
+            (function() {
+                const timing = {"North": 10, "East": 10, "South": 20, "West": 20};
+                const demand = {"North": 70.75, "East": 30.17, "South": 28.64, "West": 20.61};
+                const directions = ["North", "East", "South", "West"];
+                const wrapper = document.querySelector('.intersection-wrapper');
+                
+                let queues = { North: [], East: [], South: [], West: [] };
+                let activeIndex = 0;
+                let isRunning = true;
+                let cycleCount = 0;
+                const maxCycles = 3; // Limit to 3 cycles for performance
+                const maxVehicles = 20;
+                const maxVehiclesPerDirection = 6;
+                
+                // Max visual demand reference for normalization
+                let maxDemand = 1;
+                for (let k in demand) { if(demand[k] > maxDemand) maxDemand = demand[k]; }
+                
+                async function sleep(ms) {
+                    return new Promise(resolve => setTimeout(resolve, ms));
+                }
+                
+                function spawnCar(dir) {
+                    const vehicleCount = directions.reduce(
+                        (total, currentDir) => total + queues[currentDir].length,
+                        0
+                    );
+                    if (
+                        vehicleCount >= maxVehicles ||
+                        queues[dir].length >= maxVehiclesPerDirection
+                    ) return;
+                    
+                    const el = document.createElement('div');
+                    el.className = `vehicle veh-v veh-${dir.charAt(0).toLowerCase()}`;
+                    if (dir === 'East' || dir === 'West') {
+                        el.className = `vehicle veh-h veh-${dir.charAt(0).toLowerCase()}`;
+                    }
+                    
+                    const i = queues[dir].length;
+                    if (dir === "North") {
+                        el.style.top = (214 - 36 - 8 - (i * 44)) + "px";
+                    } else if (dir === "South") {
+                        el.style.top = (380 + 6 + 8 + (i * 44)) + "px";
+                    } else if (dir === "West") {
+                        el.style.left = (214 - 36 - 8 - (i * 44)) + "px";
+                    } else if (dir === "East") {
+                        el.style.left = (380 + 6 + 8 + (i * 44)) + "px";
+                    }
+                    
+                    wrapper.appendChild(el);
+                    queues[dir].push(el);
+                }
+                
+                async function arrivalLoop() {
+                    while (isRunning) {
+                        for (let dir of directions) {
+                            const rate = demand[dir] / maxDemand;
+                            if (Math.random() < rate * 0.7) { // Reduced spawn rate
+                                spawnCar(dir);
+                            }
+                        }
+                        await sleep(2000); // Increased from 1500ms for faster loop completion
+                    }
+                }
+                
+                async function runCycle() {
+                    while(isRunning && cycleCount < maxCycles) {
+                        const dir = directions[activeIndex];
+                        const durationMs = (timing[dir] || 15) * 200; // Reduced from 300ms to 200ms
+                        
+                        directions.forEach(d => {
+                            const lightId = '.t-light-' + d.charAt(0).toLowerCase() + ' .t-light-indicator';
+                            const light = document.querySelector(lightId);
+                            if (light) {
+                                if (d === dir) {
+                                    light.classList.add('light-green');
+                                    light.classList.remove('light-red');
+                                } else {
+                                    light.classList.add('light-red');
+                                    light.classList.remove('light-green');
+                                }
+                            }
+                        });
+                        
+                        const endTime = Date.now() + durationMs;
+                        let dischargeCount = 0;
+                        const maxDischarge = 4; // Reduced discharge per cycle
+                        
+                        while(Date.now() < endTime && dischargeCount < maxDischarge) {
+                            if (queues[dir].length > 0) {
+                                const car = queues[dir].shift();
+                                
+                                if (dir === "North") car.style.transform = "translateY(300px)";
+                                else if (dir === "South") car.style.transform = "translateY(-300px)";
+                                else if (dir === "East") car.style.transform = "translateX(-300px)";
+                                else if (dir === "West") car.style.transform = "translateX(300px)";
+                                
+                                car.style.opacity = "0";
+                                setTimeout(() => { if (car && car.parentNode) car.parentNode.removeChild(car); }, 1000);
+                                dischargeCount++;
+                            }
+                            
+                            queues[dir].forEach((c, idx) => {
+                                c.style.transition = 'top 0.15s, left 0.15s';
+                                if (dir === "North") c.style.top = (214 - 36 - 8 - (idx * 44)) + "px";
+                                else if (dir === "South") c.style.top = (380 + 6 + 8 + (idx * 44)) + "px";
+                                else if (dir === "West") c.style.left = (214 - 36 - 8 - (idx * 44)) + "px";
+                                else if (dir === "East") c.style.left = (380 + 6 + 8 + (idx * 44)) + "px";
+                            });
+                            
+                            await sleep(500); // Reduced from 750ms
+                        }
+                        
+                        const remaining = endTime - Date.now();
+                        if(remaining > 0) {
+                            await sleep(remaining);
+                        }
+                        
+                        activeIndex = (activeIndex + 1) % 4;
+                        if (activeIndex === 0) cycleCount++;
+                    }
+                    isRunning = false;
+                }
+                
+                for (let dir of directions) {
+                    const rate = demand[dir] / maxDemand;
+                    const initialCount = demand[dir] > 0
+                        ? Math.max(1, Math.floor(rate * 4))
+                        : 0;
+                    for (let i = 0; i < initialCount; i++) spawnCar(dir);
+                }
+                
+                arrivalLoop();
+                runCycle();
+                
+                // Stop animation after timeout to free resources
+                setTimeout(() => { isRunning = false; }, 35000);
+            })();
+        </script>
+        

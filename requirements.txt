@@ -1,8 +1,11 @@
 
 numpy
 pandas
+fastapi
+uvicorn
 scikit-learn
 qiskit
+qiskit-ibm-runtime
 qiskit-aer
 streamlit
 plotly

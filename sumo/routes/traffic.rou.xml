@@ -1,0 +1,39 @@
+<routes>
+
+    <vType id="car"
+           accel="2.6"
+           decel="4.5"
+           sigma="0.5"
+           length="5"
+           minGap="2.5"
+           maxSpeed="13.89"
+           guiShape="passenger"/>
+
+    <route id="north_south"
+           edges="north_center center_south"/>
+
+    <route id="south_north"
+           edges="south_center center_north"/>
+
+    <route id="west_east"
+           edges="west_center center_east"/>
+
+    <route id="east_west"
+           edges="east_center center_west"/>
+
+
+    <!-- All vehicles sorted by departure time -->
+
+    <vehicle id="N1" type="car" route="north_south" depart="0"/>
+    <vehicle id="S1" type="car" route="south_north" depart="0"/>
+    <vehicle id="E1" type="car" route="east_west" depart="0"/>
+    <vehicle id="W1" type="car" route="west_east" depart="0"/>
+
+    <vehicle id="N2" type="car" route="north_south" depart="5"/>
+    <vehicle id="S2" type="car" route="south_north" depart="5"/>
+    <vehicle id="E2" type="car" route="east_west" depart="5"/>
+    <vehicle id="W2" type="car" route="west_east" depart="5"/>
+
+    <vehicle id="N3" type="car" route="north_south" depart="10"/>
+
+</routes>

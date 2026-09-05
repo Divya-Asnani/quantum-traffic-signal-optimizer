@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Quantum Traffic Signal Optimizer</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- HEADER -->
+    <header class="topbar">
+
+        <div class="brand">
+            <div class="logo">Q</div>
+
+            <div>
+                <h1>Quantum Traffic Signal Optimizer</h1>
+                <p>AI Traffic Prediction + QAOA Signal Optimization</p>
+            </div>
+        </div>
+
+        <div class="header-status">
+            <span id="connectionStatus" class="status-dot offline"></span>
+            <span id="connectionText">Backend Offline</span>
+
+            <button id="runOptimization" class="optimize-btn">
+                <span>⚛</span>
+                Run QAOA Optimization
+            </button>
+        </div>
+
+    </header>
+
+
+    <!-- MAIN DASHBOARD -->
+    <main class="dashboard">
+
+        <!-- LEFT PANEL -->
+        <aside class="left-panel">
+
+            <section class="panel">
+
+                <div class="panel-title">
+                    <div>
+                        <h2>Traffic Demand</h2>
+                        <p>Current intersection load</p>
+                    </div>
+                    <span class="live-badge">LIVE</span>
+                </div>
+
+
+                <label class="scenario-label" for="trafficSource">Traffic source</label>
+                <select id="trafficSource" class="scenario-select">
+                    <option value="simulation" selected>Simulation</option>
+                    <option value="ai">AI Prediction</option>
+                    <option value="custom">Custom demand</option>
+                </select>
+
+
+                <div class="demand-card north-card">
+                    <div class="direction-icon">↑</div>
+
+                    <div class="demand-info">
+                        <span>NORTH</span>
+                        <small>Vehicles / demand</small>
+                    </div>
+
+                    <input id="North" type="number" value="70" min="0" aria-label="North traffic demand">
+                </div>
+
+
+                <div class="demand-card east-card">
+                    <div class="direction-icon">→</div>
+
+                    <div class="demand-info">
+                        <span>WEST</span>
+                        <small>Vehicles / demand</small>
+                    </div>
+
+                    <input id="East" type="number" value="30" min="0" aria-label="East traffic demand">
+                </div>
+
+
+                <div class="demand-card south-card">
+                    <div class="direction-icon">↓</div>
+
+                    <div class="demand-info">
+                        <span>SOUTH</span>
+                        <small>Vehicles / demand</small>
+                    </div>
+
+                    <input id="South" type="number" value="25" min="0" aria-label="South traffic demand">
+                </div>
+
+
+                <div class="demand-card west-card">
+                    <div class="direction-icon">←</div>
+
+                    <div class="demand-info">
+                        <span>EAST</span>
+                        <small>Vehicles / demand</small>
+                    </div>
+
+                    <input id="West" type="number" value="20" min="0" aria-label="West traffic demand">
+                </div>
+
+                <label class="scenario-label" for="scenarioSelect">Traffic scenario</label>
+                <select id="scenarioSelect" class="scenario-select">
+                    <option value="custom">Custom demand</option>
+                    <option value="morning-rush">Morning rush</option>
+                    <option value="north-south-heavy">North-South heavy traffic</option>
+                    <option value="east-heavy">East heavy traffic</option>
+                    <option value="low">Low traffic</option>
+                    <option value="balanced">Balanced traffic</option>
+                </select>
+
+                <p id="demandStatus" class="demand-status">Set demand, then run optimization.</p>
+
+            </section>
+
+
+            <section class="panel simulation-control">
+
+                <div class="panel-title">
+                    <div>
+                        <h2>Simulation</h2>
+                        <p>Compare signal strategies</p>
+                    </div>
+                </div>
+
+
+                <div class="simulation-buttons">
+
+                    <button id="beforeBtn" class="sim-btn active">
+                        <span>◀</span>
+                        Before Optimization
+                    </button>
+
+                </div>
+
+
+                <button id="playPause" class="play-btn">
+                    ■ Stop Simulation
+                </button>
+
+            </section>
+
+        </aside>
+
+
+        <!-- CENTER 3D SIMULATION -->
+        <section class="simulation-area">
+
+            <div id="scene-container">
+
+                <!-- Direction labels -->
+                <div class="world-label north-label">NORTH</div>
+                <div class="world-label east-label">EAST</div>
+                <div class="world-label south-label">SOUTH</div>
+                <div class="world-label west-label">WEST</div>
+
+
+                <!-- Simulation overlay -->
+                <div class="simulation-overlay">
+
+                    <div class="simulation-mode">
+                        <span id="simulationMode">BEFORE OPTIMIZATION</span>
+                    </div>
+
+                    <div class="phase-display">
+
+                        <div class="phase-label">
+                            CURRENT GREEN
+                        </div>
+
+                        <div id="currentDirection" class="phase-direction">
+                            NORTH
+                        </div>
+
+                        <div id="countdown" class="countdown">
+                            15.0s
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="camera-hint">
+                    🖱 Drag to rotate · Scroll to zoom
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- RIGHT PANEL -->
+        <aside class="right-panel">
+
+            <section class="panel optimization-panel">
+
+                <div class="panel-title">
+                    <div>
+                        <h2>QAOA Optimization</h2>
+                        <p>Quantum optimized signal timing</p>
+                    </div>
+
+                    <div id="qaoaStatus" class="qaoa-badge">
+                        READY
+                    </div>
+                </div>
+
+
+                <div class="timing-list">
+
+                    <div class="timing-row">
+                        <div class="timing-direction">
+                            <span class="timing-dot north-dot"></span>
+                            NORTH
+                        </div>
+
+                        <div class="timing-value">
+                            <strong id="northTiming">15</strong>
+                            <span>sec</span>
+                        </div>
+                    </div>
+
+
+                    <div class="timing-row">
+                        <div class="timing-direction">
+                            <span class="timing-dot east-dot"></span>
+                            EAST
+                        </div>
+
+                        <div class="timing-value">
+                            <strong id="eastTiming">15</strong>
+                            <span>sec</span>
+                        </div>
+                    </div>
+
+
+                    <div class="timing-row">
+                        <div class="timing-direction">
+                            <span class="timing-dot south-dot"></span>
+                            SOUTH
+                        </div>
+
+                        <div class="timing-value">
+                            <strong id="southTiming">15</strong>
+                            <span>sec</span>
+                        </div>
+                    </div>
+
+
+                    <div class="timing-row">
+                        <div class="timing-direction">
+                            <span class="timing-dot west-dot"></span>
+                            WEST
+                        </div>
+
+                        <div class="timing-value">
+                            <strong id="westTiming">15</strong>
+                            <span>sec</span>
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <div class="cycle-total">
+                    <span>Total Cycle</span>
+                    <strong id="cycleTotal">60 sec</strong>
+                </div>
+
+            </section>
+
+
+            <section class="panel qaoa-result">
+
+                <div class="panel-title">
+                    <div>
+                        <h2>Optimization Result</h2>
+                        <p>Actual backend QAOA result</p>
+                    </div>
+                </div>
+
+
+                <div class="metric">
+
+                        <span>Classical Objective</span>
+
+                    <strong id="qaoaObjective">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <span>IBM QUBO Objective</span>
+
+                    <strong id="ibmObjective">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <span>Runtime</span>
+
+                    <strong id="qaoaRuntime">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <span>Qubits</span>
+
+                    <strong id="qaoaQubits">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <span>Optimizer</span>
+
+                    <strong id="qaoaOptimizer">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <span>IBM Backend</span>
+
+                    <strong id="ibmBackend">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <span>Job ID</span>
+
+                    <strong id="ibmJobId" class="metric-value-small">
+                        —
+                    </strong>
+
+                </div>
+
+            </section>
+
+        </aside>
+
+    </main>
+
+
+    <!-- PERFORMANCE COMPARISON ENTRY -->
+    <footer class="bottom-panel">
+        <button id="comparisonButton" class="comparison-entry" type="button">
+            <span>PERFORMANCE COMPARISON</span>
+            <small>Open the complete backend comparison report</small>
+            <strong>View results <span aria-hidden="true">→</span></strong>
+        </button>
+
+    </footer>
+
+
+    <!-- PERFORMANCE COMPARISON VIEW -->
+    <section id="comparisonPage" class="comparison-page" hidden>
+        <header class="comparison-header">
+            <button id="comparisonBack" class="back-button" type="button">← Dashboard</button>
+            <div>
+                <p class="eyebrow">IBM QUANTUM TRAFFIC ANALYSIS</p>
+                <h2>Performance Comparison</h2>
+                <p>Exact values returned by the backend for the selected traffic demand.</p>
+            </div>
+            <span id="comparisonPageStatus" class="qaoa-badge">WAITING FOR RESULT</span>
+        </header>
+
+        <div class="comparison-summary">
+            <div><span>Total Demand</span><strong id="comparisonTotalDemand">—</strong></div>
+            <div><span>Classical Objective</span><strong id="comparisonTrafficObjective">—</strong></div>
+            <div><span>IBM QUBO Objective</span><strong id="comparisonIbmObjective">—</strong></div>
+            <div><span>Improvement</span><strong id="comparisonImprovement">—</strong></div>
+        </div>
+
+        <div class="comparison-table-wrap">
+            <table class="comparison-table">
+                <thead>
+                    <tr><th>Strategy</th><th>North</th><th>East</th><th>South</th><th>West</th><th>Objective</th></tr>
+                </thead>
+                <tbody>
+                    <tr><th>Default</th><td id="comparisonDefaultNorth">—</td><td id="comparisonDefaultEast">—</td><td id="comparisonDefaultSouth">—</td><td id="comparisonDefaultWest">—</td><td id="comparisonDefaultObjective">—</td></tr>
+                    <tr><th>Classical full</th><td id="comparisonClassicalNorth">—</td><td id="comparisonClassicalEast">—</td><td id="comparisonClassicalSouth">—</td><td id="comparisonClassicalWest">—</td><td id="comparisonClassicalObjective">—</td></tr>
+                    <tr><th>Quantum-compatible</th><td id="comparisonCompatibleNorth">—</td><td id="comparisonCompatibleEast">—</td><td id="comparisonCompatibleSouth">—</td><td id="comparisonCompatibleWest">—</td><td id="comparisonCompatibleObjective">—</td></tr>
+                    <tr class="qaoa-row"><th>IBM Quantum QAOA</th><td id="comparisonQaoaNorth">—</td><td id="comparisonQaoaEast">—</td><td id="comparisonQaoaSouth">—</td><td id="comparisonQaoaWest">—</td><td id="comparisonQaoaObjective">—</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="comparison-details">
+            <div><span>IBM backend</span><strong id="comparisonBackend">—</strong></div>
+            <div><span>Job ID</span><strong id="comparisonJobId">—</strong></div>
+            <div><span>Qubits</span><strong id="comparisonQubits">—</strong></div>
+            <div><span>Result runtime</span><strong id="comparisonRuntime">—</strong></div>
+        </div>
+    </section>
+
+</div>
+
+
+<script type="module" src="app.js"></script>
+
+</body>
+</html>
