@@ -15,4 +15,7 @@ env/
 .DS_Store
 Thumbs.db
 
-models/*.joblib
+src/.env
+.venv/
+venv/
+app/.venv311/

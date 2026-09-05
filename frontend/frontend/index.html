@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+```
+<title>Quantum Traffic Signal Optimizer</title>
+
+<link rel="stylesheet" href="style.css">
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+    }
+}
+</script>
+```
+
+</head>
+
+<body>
+
+```
+<div id="dashboard">
+
+    <header>
+        <div>
+            <h1>⚛ QUANTUM TRAFFIC</h1>
+            <p>SIGNAL OPTIMIZER</p>
+        </div>
+
+        <div class="live">
+            <span></span> LIVE SIMULATION
+        </div>
+    </header>
+
+    <main>
+
+        <aside class="control-panel">
+
+            <h2>TRAFFIC INPUT</h2>
+
+            <label>North</label>
+            <input id="north" type="number" value="10">
+
+            <label>South</label>
+            <input id="south" type="number" value="8">
+
+            <label>East</label>
+            <input id="east" type="number" value="12">
+
+            <label>West</label>
+            <input id="west" type="number" value="6">
+
+            <button id="startButton">
+                ▶ START SIMULATION
+            </button>
+
+        </aside>
+
+        <section id="scene-container"></section>
+
+        <aside class="info-panel">
+
+            <h2>QAOA OPTIMIZATION</h2>
+
+            <div class="status">
+                <span>STATUS</span>
+                <strong>READY</strong>
+            </div>
+
+            <div class="metric">
+                <span>North Green</span>
+                <strong>32s</strong>
+            </div>
+
+            <div class="metric">
+                <span>South Green</span>
+                <strong>28s</strong>
+            </div>
+
+            <div class="metric">
+                <span>East Green</span>
+                <strong>41s</strong>
+            </div>
+
+            <div class="metric">
+                <span>West Green</span>
+                <strong>19s</strong>
+            </div>
+
+        </aside>
+
+    </main>
+
+    <footer>
+
+        <div>
+            <span>VEHICLES</span>
+            <strong id="vehicleCount">0</strong>
+        </div>
+
+        <div>
+            <span>QUEUE</span>
+            <strong>0</strong>
+        </div>
+
+        <div>
+            <span>WAITING</span>
+            <strong>0 s</strong>
+        </div>
+
+        <div>
+            <span>CONGESTION</span>
+            <strong>0%</strong>
+        </div>
+
+    </footer>
+
+</div>
+
+<script type="module" src="app.js"></script>
+```
+
+</body>
+</html>
